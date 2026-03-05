@@ -3,6 +3,7 @@ import GameMenu from './components/GameMenu'
 import CrayonSnake from './games/CrayonSnake'
 import CrayonCircuit from './games/CrayonCircuit'
 import TheBlankPage from './games/TheBlankPage'
+import CrayonFlappy from './games/CrayonFlappy'
 
 const GAMES = [
   {
@@ -25,6 +26,13 @@ const GAMES = [
     description: "Lo que no pintas, no existe",
     icon: "📄",
     component: TheBlankPage,
+  },
+  {
+    id: "flappy",
+    name: "Crayon Flappy",
+    description: "Vuela, pinta el cielo y no te estrelles",
+    icon: "✈️",
+    component: CrayonFlappy,
   },
 ]
 
