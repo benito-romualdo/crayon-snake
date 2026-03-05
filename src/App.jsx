@@ -2,6 +2,7 @@ import { useState } from 'react'
 import GameMenu from './components/GameMenu'
 import CrayonSnake from './games/CrayonSnake'
 import CrayonCircuit from './games/CrayonCircuit'
+import TheBlankPage from './games/TheBlankPage'
 
 const GAMES = [
   {
@@ -17,6 +18,13 @@ const GAMES = [
     description: "Conecta los puntos de colores sin cruzar",
     icon: "🔴",
     component: CrayonCircuit,
+  },
+  {
+    id: "blankpage",
+    name: "The Blank Page",
+    description: "Lo que no pintas, no existe",
+    icon: "📄",
+    component: TheBlankPage,
   },
 ]
 
