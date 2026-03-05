@@ -1,16 +1,28 @@
-# 🖍️ Crayon Snake
+# 🖍️ Crayon Games
 
-Un juego tipo **Snake** con estética de crayola sobre cuaderno escolar. Controla una crayola que pinta su camino, recoge manzanas y estrellas bonus, ¡y no te salgas del cuaderno!
+Coleccion de minijuegos con estetica de crayola sobre cuaderno escolar. Incluye un menu principal para seleccionar entre los juegos disponibles.
 
-## 🎮 Controles
+## 🎮 Juegos
 
-| Método | Acción |
+### 🖍️ Crayon Snake
+
+Controla una crayola que pinta su camino, recoge manzanas y estrellas bonus, ¡y no te salgas del cuaderno!
+
+| Metodo | Accion |
 |--------|--------|
 | **Flechas del teclado** | Mover la crayola |
 | **W A S D** | Mover la crayola |
-| **Swipe táctil** | Mover la crayola (móvil) |
-| **D-Pad en pantalla** | Mover la crayola (móvil) |
-| **Space / Enter** | Iniciar juego |
+| **Swipe tactil** | Mover la crayola (movil) |
+| **D-Pad en pantalla** | Mover la crayola (movil) |
+
+### 🔴 Crayon Circuit
+
+Conecta los pares de puntos del mismo color con trazos de crayola, ¡sin cruzar las lineas!
+
+- 8 niveles progresivos (5x5 a 8x8)
+- Click/toca un punto y arrastra para dibujar el camino
+- Si las lineas se cruzan, pierdes
+- Progreso guardado en el navegador
 
 ## 🚀 Desarrollo local
 
@@ -85,12 +97,21 @@ npm run preview
 
 5. En GitHub → Settings → Pages, selecciona la rama `gh-pages`
 
-## 🎨 Personalización
+## 🏗️ Arquitectura
 
-- **Colores de crayola:** Edita el array `COLORS` en `src/CrayonSnake.jsx`
-- **Velocidad:** Ajusta `INIT_SPEED` (menor = más rápido)
-- **Tamaño del tablero:** Modifica `COLS` y `ROWS`
-- **Tamaño inicial:** Cambia `INIT_LEN`
+```
+src/
+  main.jsx            → Punto de entrada
+  App.jsx             → Router: menu principal o juego activo
+  components/
+    GameMenu.jsx      → Menu de seleccion de juegos
+    BackButton.jsx    → Boton de volver reutilizable
+  games/
+    CrayonSnake.jsx   → Juego Snake completo (~570 lineas)
+    CrayonCircuit.jsx → Juego Circuit completo (~720 lineas)
+```
+
+Cada juego es un componente autonomo que recibe `onBack` como prop para volver al menu.
 
 ## 🛠️ Tech Stack
 
