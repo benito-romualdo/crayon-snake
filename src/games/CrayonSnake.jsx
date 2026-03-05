@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import BackButton from "../components/BackButton";
 
 /* ── Constants ── */
 const CELL = 20;
@@ -147,7 +148,7 @@ const css = `
 `;
 
 /* ══════════════════════════════════════════════════════════════ */
-export default function CrayonSnake() {
+export default function CrayonSnake({ onBack }) {
   const initSnake = makeInitSnake();
   const [snake, setSnake] = useState(initSnake);
   const [food, setFood] = useState(() => randomPos(initSnake));
@@ -355,6 +356,8 @@ export default function CrayonSnake() {
       onTouchEnd={onTE}
     >
       <style>{css}</style>
+
+      {onBack && <BackButton onBack={onBack} />}
 
       {/* Margin lines */}
       <div style={{ position: "fixed", left: 60, top: 0, bottom: 0, width: 2, background: "rgba(220,80,80,.3)", zIndex: 0 }} />
