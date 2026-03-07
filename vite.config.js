@@ -7,4 +7,7 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
   },
+  server: {
+    allowedHosts: true,
+  },
 })
