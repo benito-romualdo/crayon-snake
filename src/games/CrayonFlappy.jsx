@@ -4,19 +4,19 @@ import BackButton from "../components/BackButton";
 /* ── Constants ── */
 const CANVAS_W = 400;
 const CANVAS_H = 600;
-const GRAVITY = 0.45;
-const FLAP_FORCE = -7;
-const MAX_FALL_SPEED = 10;
+const GRAVITY = 0.10;
+const FLAP_FORCE = -3.5;
+const MAX_FALL_SPEED = 4;
 const PLANE_X = 80;
 const PLANE_W = 36;
 const PLANE_H = 24;
 const HITBOX_SCALE = 0.7;
 const PIPE_W = 52;
-const PIPE_GAP = 150;
-const PIPE_GAP_MIN = 100;
+const PIPE_GAP = 175;
+const PIPE_GAP_MIN = 130;
 const PIPE_GAP_SHRINK = 1;
 const PIPE_SPEED = 2.5;
-const PIPE_SPACING = 200;
+const PIPE_SPACING = 280;
 const STAR_SIZE = 20;
 const STAR_CHANCE = 0.6;
 const TRAIL_MAX = 150;
@@ -30,11 +30,15 @@ const COLORS = [
   { name: "Rosa", body: "#e91e8c", tip: "#c2185b", shade: "#880e4f" },
 ];
 
+/* ── Grace period (frames) before pipes can kill ── */
+const GRACE_FRAMES = 120; // ~2 s at 60 fps
+
 /* ── CSS keyframes ── */
 const css = `
 @keyframes rainbow{0%{color:#e63946}16%{color:#ff9800}33%{color:#4caf50}50%{color:#2196F3}66%{color:#9c27b0}83%{color:#e91e8c}100%{color:#e63946}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes wobble{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+@keyframes countPop{0%{transform:scale(2);opacity:0}40%{opacity:1}100%{transform:scale(1);opacity:1}}
 `;
 
 /* ── Canvas drawing helpers ── */
@@ -339,6 +343,7 @@ function spawnFlapParticle(planeY, color) {
 /* ── Component ── */
 export default function CrayonFlappy({ onBack }) {
   const [gameState, setGameState] = useState("idle");
+  const [countdown, setCountdown] = useState(null); // 3 | 2 | 1 | null
   const [score, setScore] = useState(0);
   const [starCount, setStarCount] = useState(0);
   const [best, setBest] = useState(() => {
@@ -351,10 +356,18 @@ export default function CrayonFlappy({ onBack }) {
   const gsRef = useRef("idle");
   const colorRef = useRef(COLORS[0]);
   const rafRef = useRef(null);
+  const countdownTimerRef = useRef(null);
 
   // Keep refs in sync
   useEffect(() => { gsRef.current = gameState; }, [gameState]);
   useEffect(() => { colorRef.current = COLORS[selectedColor]; }, [selectedColor]);
+
+  // Cleanup countdown timer on unmount
+  useEffect(() => {
+    return () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    };
+  }, []);
 
   function initGame() {
     return {
@@ -369,13 +382,50 @@ export default function CrayonFlappy({ onBack }) {
       starCount: 0,
       pipeGap: PIPE_GAP,
       lastPipeX: CANVAS_W + 100,
+      graceFrames: GRACE_FRAMES, // immunity frames at start
     };
   }
 
+  // Kick off the 3-2-1 countdown, then transition to "playing"
+  const beginCountdown = useCallback(() => {
+    if (gsRef.current === "countdown" || gsRef.current === "playing") return;
+    // Pre-initialise game state so canvas keeps rendering the idle plane
+    const g = initGame();
+    gameRef.current = g;
+    gsRef.current = "countdown";
+    setGameState("countdown");
+    setScore(0);
+    setStarCount(0);
+
+    let count = 3;
+    setCountdown(count);
+
+    countdownTimerRef.current = setInterval(() => {
+      count--;
+      if (count > 0) {
+        setCountdown(count);
+      } else {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+        setCountdown(null);
+        // Give the plane an upward boost so it starts mid-air
+        if (gameRef.current) gameRef.current.plane.vy = FLAP_FORCE;
+        gsRef.current = "playing";
+        setGameState("playing");
+      }
+    }, 1000);
+  }, []);
+
   const startGame = useCallback(() => {
+    // Clear any running countdown
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
     const g = initGame();
     gameRef.current = g;
     gsRef.current = "playing"; // sync immediately for game loop
+    setCountdown(null);
     setScore(0);
     setStarCount(0);
     setGameState("playing");
@@ -398,15 +448,15 @@ export default function CrayonFlappy({ onBack }) {
 
   const flap = useCallback(() => {
     if (gsRef.current === "idle") {
-      startGame();
-      // Fall through to also apply flap force
+      beginCountdown();
+      return; // don't apply force yet; player will flap on their own
     }
     if (gsRef.current === "over") return;
     const g = gameRef.current;
     if (!g) return;
     g.plane.vy = FLAP_FORCE;
     g.particles.push(spawnFlapParticle(g.plane.y, colorRef.current));
-  }, [startGame]);
+  }, [beginCountdown]);
 
   // Input handlers
   useEffect(() => {
@@ -439,97 +489,110 @@ export default function CrayonFlappy({ onBack }) {
 
     function loop() {
       const g = gameRef.current;
-      const playing = gsRef.current === "playing";
+      const gs = gsRef.current;
+      const playing = gs === "playing";
+      const countdown = gs === "countdown";
       const color = colorRef.current;
 
-      if (playing) {
-        // Physics
-        g.plane.vy += GRAVITY;
-        if (g.plane.vy > MAX_FALL_SPEED) g.plane.vy = MAX_FALL_SPEED;
-        g.plane.y += g.plane.vy;
+      if (playing || countdown) {
+        // Physics: gravity only active while playing (not during countdown)
+        if (playing) {
+          g.plane.vy += GRAVITY;
+          if (g.plane.vy > MAX_FALL_SPEED) g.plane.vy = MAX_FALL_SPEED;
+          g.plane.y += g.plane.vy;
+        }
 
         // Scroll
         g.scrollX += PIPE_SPEED;
 
-        // Move pipes left
-        for (const pipe of g.pipes) pipe.x -= PIPE_SPEED;
-        for (const star of g.stars) star.x -= PIPE_SPEED;
+        if (playing) {
+          // Move pipes left
+          for (const pipe of g.pipes) pipe.x -= PIPE_SPEED;
+          for (const star of g.stars) star.x -= PIPE_SPEED;
 
-        // Generate new pipes
-        const rightmostPipe = g.pipes.length > 0 ? Math.max(...g.pipes.map(p => p.x)) : 0;
-        if (g.pipes.length === 0 || rightmostPipe < CANVAS_W - PIPE_SPACING) {
-          const gap = Math.max(PIPE_GAP_MIN, PIPE_GAP - g.score * PIPE_GAP_SHRINK);
-          const minTop = 60;
-          const maxTop = CANVAS_H - gap - 60;
-          const topH = minTop + Math.random() * (maxTop - minTop);
-          const newPipe = {
-            x: CANVAS_W + 20,
-            topH,
-            gap,
-            color: COLORS[Math.floor(Math.random() * COLORS.length)],
-            scored: false,
-          };
-          g.pipes.push(newPipe);
-          g.pipeGap = gap;
+          // Generate new pipes
+          const rightmostPipe = g.pipes.length > 0 ? Math.max(...g.pipes.map(p => p.x)) : 0;
+          if (g.pipes.length === 0 || rightmostPipe < CANVAS_W - PIPE_SPACING) {
+            const gap = Math.max(PIPE_GAP_MIN, PIPE_GAP - g.score * PIPE_GAP_SHRINK);
+            const minTop = 60;
+            const maxTop = CANVAS_H - gap - 60;
+            const topH = minTop + Math.random() * (maxTop - minTop);
+            const newPipe = {
+              x: CANVAS_W + 20,
+              topH,
+              gap,
+              color: COLORS[Math.floor(Math.random() * COLORS.length)],
+              scored: false,
+            };
+            g.pipes.push(newPipe);
+            g.pipeGap = gap;
 
-          // Maybe spawn star in the gap
-          if (Math.random() < STAR_CHANCE) {
-            g.stars.push({
-              x: CANVAS_W + 20 + PIPE_W / 2,
-              y: topH + gap / 2 + (Math.random() - 0.5) * (gap * 0.4),
-              collected: false,
-            });
+            // Maybe spawn star in the gap
+            if (Math.random() < STAR_CHANCE) {
+              g.stars.push({
+                x: CANVAS_W + 20 + PIPE_W / 2,
+                y: topH + gap / 2 + (Math.random() - 0.5) * (gap * 0.4),
+                collected: false,
+              });
+            }
           }
-        }
 
-        // Remove offscreen pipes/stars
-        g.pipes = g.pipes.filter(p => p.x + PIPE_W > -20);
-        g.stars = g.stars.filter(s => s.x > -STAR_SIZE && !s.collected);
+          // Remove offscreen pipes/stars
+          g.pipes = g.pipes.filter(p => p.x + PIPE_W > -20);
+          g.stars = g.stars.filter(s => s.x > -STAR_SIZE && !s.collected);
 
-        // Scoring
-        for (const pipe of g.pipes) {
-          if (!pipe.scored && pipe.x + PIPE_W < PLANE_X) {
-            pipe.scored = true;
-            g.score++;
-            // Confetti
-            g.particles.push(...spawnConfetti(PLANE_X + PLANE_W, g.plane.y + PLANE_H / 2));
+          // Scoring
+          for (const pipe of g.pipes) {
+            if (!pipe.scored && pipe.x + PIPE_W < PLANE_X) {
+              pipe.scored = true;
+              g.score++;
+              // Confetti
+              g.particles.push(...spawnConfetti(PLANE_X + PLANE_W, g.plane.y + PLANE_H / 2));
+            }
           }
-        }
 
-        // Star collection
-        for (const star of g.stars) {
-          if (star.collected) continue;
-          const dx = (PLANE_X + PLANE_W / 2) - star.x;
-          const dy = (g.plane.y + PLANE_H / 2) - star.y;
-          if (Math.abs(dx) < PLANE_W / 2 + STAR_SIZE / 2 && Math.abs(dy) < PLANE_H / 2 + STAR_SIZE / 2) {
-            star.collected = true;
-            g.starCount++;
+          // Star collection
+          for (const star of g.stars) {
+            if (star.collected) continue;
+            const dx = (PLANE_X + PLANE_W / 2) - star.x;
+            const dy = (g.plane.y + PLANE_H / 2) - star.y;
+            if (Math.abs(dx) < PLANE_W / 2 + STAR_SIZE / 2 && Math.abs(dy) < PLANE_H / 2 + STAR_SIZE / 2) {
+              star.collected = true;
+              g.starCount++;
+            }
           }
-        }
 
-        // Collision: ceiling / floor
-        if (g.plane.y < 0 || g.plane.y + PLANE_H > CANVAS_H) {
-          gameOver();
-        }
+          // Count down grace frames
+          if (g.graceFrames > 0) g.graceFrames--;
 
-        // Collision: pipes (hitbox reduced)
-        const hbW = PLANE_W * HITBOX_SCALE;
-        const hbH = PLANE_H * HITBOX_SCALE;
-        const hbX = PLANE_X + (PLANE_W - hbW) / 2;
-        const hbY = g.plane.y + (PLANE_H - hbH) / 2;
-        for (const pipe of g.pipes) {
-          // Top pipe
-          if (hbX + hbW > pipe.x && hbX < pipe.x + PIPE_W && hbY < pipe.topH) {
+          // Collision: ceiling / floor (always active)
+          if (g.plane.y < 0 || g.plane.y + PLANE_H > CANVAS_H) {
             gameOver();
-            break;
           }
-          // Bottom pipe
-          const bottomY = pipe.topH + pipe.gap;
-          if (hbX + hbW > pipe.x && hbX < pipe.x + PIPE_W && hbY + hbH > bottomY) {
-            gameOver();
-            break;
+
+          // Collision: pipes (hitbox reduced) — skipped during grace period
+          if (g.graceFrames === 0) {
+            const hbW = PLANE_W * HITBOX_SCALE;
+            const hbH = PLANE_H * HITBOX_SCALE;
+            const hbX = PLANE_X + (PLANE_W - hbW) / 2;
+            const hbY = g.plane.y + (PLANE_H - hbH) / 2;
+            for (const pipe of g.pipes) {
+              // Top pipe
+              if (hbX + hbW > pipe.x && hbX < pipe.x + PIPE_W && hbY < pipe.topH) {
+                gameOver();
+                break;
+              }
+              // Bottom pipe
+              const bottomY = pipe.topH + pipe.gap;
+              if (hbX + hbW > pipe.x && hbX < pipe.x + PIPE_W && hbY + hbH > bottomY) {
+                gameOver();
+                break;
+              }
+            }
           }
         }
+
+        // During countdown: avion stays static (no gravity, no collision checks)
 
         // Trail
         g.trail.unshift({ x: PLANE_X + PLANE_W / 2, y: g.plane.y + PLANE_H / 2 });
@@ -609,8 +672,8 @@ export default function CrayonFlappy({ onBack }) {
         textShadow: "2px 2px 0 rgba(0,0,0,.08)", letterSpacing: 2, zIndex: 1,
       }}>Crayon Flappy</h1>
 
-      {/* Color picker (when not playing) */}
-      {gameState !== "playing" && (
+      {/* Color picker (when not playing or counting down) */}
+      {gameState !== "playing" && gameState !== "countdown" && (
         <div style={{
           display: "flex", gap: 6, marginBottom: 8, animation: "fadeIn .5s ease",
           background: "rgba(255,255,255,.7)", padding: "6px 14px", borderRadius: 20,
@@ -629,8 +692,8 @@ export default function CrayonFlappy({ onBack }) {
         </div>
       )}
 
-      {/* Score display (while playing) */}
-      {gameState === "playing" && (
+      {/* Score display (while playing or counting down) */}
+      {(gameState === "playing" || gameState === "countdown") && (
         <div style={{
           display: "flex", justifyContent: "space-between",
           width: Math.min(CANVAS_W, typeof window !== "undefined" ? window.innerWidth - 32 : CANVAS_W),
@@ -683,7 +746,7 @@ export default function CrayonFlappy({ onBack }) {
             }}>
               Vuela, pinta el cielo<br />y no te estrelles
             </div>
-            <button onClick={(e) => { e.stopPropagation(); startGame(); }} style={{
+            <button onClick={(e) => { e.stopPropagation(); beginCountdown(); }} style={{
               fontFamily: "'Fredoka One',cursive", fontSize: "clamp(14px,3vw,18px)", color: "#fff",
               background: color.body, border: "none", padding: "12px 32px", borderRadius: 25,
               cursor: "pointer", boxShadow: `0 4px 14px ${color.body}44`, transition: "all .2s", letterSpacing: 1,
@@ -693,6 +756,34 @@ export default function CrayonFlappy({ onBack }) {
             >Toca para volar</button>
             <div style={{ fontSize: "clamp(11px,2vw,14px)", marginTop: 16, color: "#999", textAlign: "center", lineHeight: 1.8 }}>
               Tap / Espacio / Flecha arriba / W
+            </div>
+          </div>
+        )}
+
+        {/* COUNTDOWN overlay */}
+        {gameState === "countdown" && countdown !== null && (
+          <div style={{
+            position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            background: "rgba(254,249,239,.55)", borderRadius: 12, pointerEvents: "none",
+          }}>
+            <div key={countdown} style={{
+              fontFamily: "'Fredoka One',cursive",
+              fontSize: "clamp(80px,20vw,130px)",
+              color: color.body,
+              textShadow: `3px 3px 0 rgba(0,0,0,.1)`,
+              animation: "countPop .9s ease forwards",
+              lineHeight: 1,
+            }}>
+              {countdown}
+            </div>
+            <div style={{
+              fontFamily: "'Fredoka One',cursive",
+              fontSize: "clamp(14px,3vw,20px)",
+              color: "#666",
+              marginTop: 8,
+            }}>
+              Prepárate…
             </div>
           </div>
         )}
@@ -731,7 +822,7 @@ export default function CrayonFlappy({ onBack }) {
                 Nuevo record!
               </div>
             )}
-            <button onClick={(e) => { e.stopPropagation(); startGame(); }} style={{
+            <button onClick={(e) => { e.stopPropagation(); beginCountdown(); }} style={{
               fontFamily: "'Fredoka One',cursive", fontSize: "clamp(14px,3vw,18px)", color: "#fff",
               background: color.body, border: "none", padding: "12px 32px", borderRadius: 25,
               cursor: "pointer", boxShadow: `0 4px 14px ${color.body}44`, transition: "all .2s", marginTop: 6,
@@ -744,7 +835,7 @@ export default function CrayonFlappy({ onBack }) {
       </div>
 
       {/* Info below canvas */}
-      {gameState !== "playing" && (
+      {gameState !== "playing" && gameState !== "countdown" && (
         <div style={{ marginTop: 10, fontSize: "clamp(11px,2vw,14px)", color: "#999", zIndex: 1 }}>
           Mejor: {best} puntos
         </div>
